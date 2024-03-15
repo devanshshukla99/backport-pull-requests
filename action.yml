@@ -1,0 +1,88 @@
+name: Backport pull-requests
+description: >
+  Backport merged pull requests to indicated branches.
+  Fast and purely `bash` based backport github action to cherry-pick commits from merged pull requests based on pull-request labels.
+author: devanshshukla99
+inputs:
+    github_token:
+        description: >
+            Github authentication token.
+            Used to create pull requests.
+            By default, it is the GITHUB_TOKEN. However, a Personal Access Token can be used for more granual scoped permissions.
+        default: ${{ github.token }}
+runs:
+    # Don't run on closed unmerged pull requests or on pull requests created by bots or on pull requests which don't need to be backported
+    if: github.event.pull_request.merged && !contains(github.event.pull_request.user.login, 'bot')
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Check out that no sensitive environment variable is shared
+        run: env
+      
+      - name: Extract target branch from pull-request labels
+        env:
+          GH_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          TARGETS=()
+          PR_LABELS=$(echo ${GH_LABELS} | sed -e 's/\[//g' -e 's/\]//g' -e 's/\,/ /g' -e 's/\"//g')
+          for label in ${PR_LABELS[@]}; do
+            arrIN=(${label//-/ })
+            for s in ${arrIN[@]}; do
+              if [[ ${s} == "backport" ]]; then
+                TARGETS+=(${arrIN[@]:2})
+              fi
+            done
+          done
+
+          if [[ ${#TARGETS[@]} -eq 0 ]]; then
+            echo "No target found. Exiting..."
+            exit -1
+          fi
+
+          echo "TARGETS=${TARGETS[@]}" > "$GITHUB_ENV"
+
+      - name: Set git properties
+        run: |
+          git config user.email "github-actions@users.noreply.github.com"
+          git config user.name "github-actions"
+
+      - name: Get commits to be backported from the pull-request
+        run: |
+          PICK_COMMITS=$(git log --oneline --no-merges ${{ github.event.pull_request.base.sha }}.. | awk '{print $1}')
+          echo "PICK_COMMITS=${PICK_COMMITS[@]}" > "$GITHUB_ENV"
+          
+          if [[ -z ${PICK_COMMITS} ]]; then
+            echo "No commits found. Exiting..."
+            exit -2
+          fi
+
+      - name: Cherry-pick commits on a new branch and create a PR      
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for TARGET in ${TARGETS[@]}; do
+            echo "Creating a new branch backport-${{ github.event.number }}-to-${TARGET} from ${TARGET}"
+            git checkout -b backport-${{ github.event.number }}-to-${TARGET} origin/${TARGET}
+        
+            for commit in ${PICK_COMMITS[@]}; do
+              git cherry-pick -x --strategy-option theirs ${commit}
+              echo ${commit}
+            done | tac
+              
+            echo "Push the branch to origin"
+            git push -u origin backport-${{ github.event.number }}-to-${TARGET}
+
+            echo "Creating PR backport-${{ github.event.number }}-to-${TARGET} -> ${TARGET}"
+            gh pr view backport-${{ github.event.number }}-to-${TARGET} || gh pr create -B ${TARGET} -H backport-${{ github.event.number }}-to-${TARGET} --title 'Backport PR #'${{ github.event.number }}' into '${TARGET} --body 'Created by Github action. Backporting #'${{ github.event.number }}
+          done
+
+      - name: Backporting failed
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Commenting on ${{ github.event.number }}"
+          gh pr comment ${{ github.event.number }} --body 'Backporting failed for the target branch. Check logs for further info.'
