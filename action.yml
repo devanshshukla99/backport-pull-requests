@@ -85,3 +85,7 @@ runs:
         run: |
           echo "Commenting on ${{ github.event.number }}"
           gh pr comment ${{ github.event.number }} --body 'Backporting failed for the target branch. Check logs for further info.'
+
+branding:
+  icon: 'skip-back'
+  color: 'purple'
