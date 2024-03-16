@@ -1,7 +1,6 @@
 name: Backport pull-requests
 description: >
-  Backport merged pull requests to indicated branches.
-  Fast and purely `bash` based backport github action to cherry-pick commits from merged pull requests based on pull-request labels.
+  Backport merged pull requests with fast and purely `bash` based github action.
 author: devanshshukla99
 inputs:
     github_token:
@@ -11,7 +10,7 @@ inputs:
             By default, it is the GITHUB_TOKEN. However, a Personal Access Token can be used for more granual scoped permissions.
         default: ${{ github.token }}
 runs:
-    # Don't run on closed unmerged pull requests or on pull requests created by bots or on pull requests which don't need to be backported
+    # Don't run on closed unmerged pull requests or on pull requests created by bots
     if: github.event.pull_request.merged && !contains(github.event.pull_request.user.login, 'bot')
     steps:
       - name: Check out repository
