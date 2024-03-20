@@ -3,7 +3,7 @@ description: >
   Backport merged pull requests with fast and purely `bash` based github action.
 author: devanshshukla99
 inputs:
-    github_token:
+    GITHUB_TOKEN:
         description: >
             Github authentication token.
             Used to create pull requests.
@@ -11,10 +11,10 @@ inputs:
         default: ${{ github.token }}
 runs:
     # Don't run on closed unmerged pull requests or on pull requests created by bots
-    if: github.event.pull_request.merged && !contains(github.event.pull_request.user.login, 'bot')
     steps:
+      if: github.event.pull_request.merged && !contains(github.event.pull_request.user.login, 'bot')
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       
@@ -60,7 +60,7 @@ runs:
 
       - name: Cherry-pick commits on a new branch and create a PR      
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ inputs.GITHUB_TOKEN }}
         run: |
           for TARGET in ${TARGETS[@]}; do
             echo "Creating a new branch backport-${{ github.event.number }}-to-${TARGET} from ${TARGET}"
@@ -81,7 +81,7 @@ runs:
       - name: Backporting failed
         if: ${{ failure() }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ inputs.GITHUB_TOKEN }}
         run: |
           echo "Commenting on ${{ github.event.number }}"
           gh pr comment ${{ github.event.number }} --body 'Backporting failed for the target branch. Check logs for further info.'
